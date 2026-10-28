@@ -26,6 +26,7 @@ export LDS_MODEL="${LDS_MODEL:-LDS-01}"
 export TURTLEBOT3_MODEL="${TURTLEBOT3_MODEL:-waffle_pi}"
 export OPENCR_PORT="${OPENCR_PORT:-/dev/ttyACM0}"
 export OPENCR_MODEL="${OPENCR_MODEL:-waffle}"
+export ROS_LOCALHOST_ONLY=1
 
 pids=()
 cleanup() {
