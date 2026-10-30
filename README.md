@@ -1,4 +1,21 @@
-# Student Rosbridge API
+# Sensor and Control - Integrated Project
+
+## LiDAR processing and evaluation contribution
+
+Chinese implementation and viva guide: [docs/MY_PART_CN.md](docs/MY_PART_CN.md).
+Team integration example: [docs/TEAM_INTEGRATION_CN.md](docs/TEAM_INTEGRATION_CN.md).
+
+```powershell
+python -m pip install -e ".[evaluation,simulation]"
+python run_my_part.py
+```
+
+This runs explicitly labelled sensor-component checks and writes CSV/JSON/PNG files
+to `results/my_part/`. It does **not** claim TurtleBot3 navigation or docking success.
+The report and logging modules accept the team's actual closed-loop trial data.
+The new contribution includes Chinese comments. Existing interface documentation follows.
+
+## Student Rosbridge API
 
 A small Python API for students who use an ML model or robotics modelling
 toolbox to control a ROS robot through rosbridge. It exposes only the main

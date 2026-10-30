@@ -1,0 +1,4 @@
+# 个人 LiDAR 部分所需依赖；只运行 run_my_part.py 时无需安装 ROS 或实物接口。
+numpy>=1.24
+matplotlib>=3.8
+mujoco>=3.2,<4
