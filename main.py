@@ -8,11 +8,15 @@ import numpy as np
 
 from src.estimation.ekf import EKF
 
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
 
 MODEL_PATH = (
-    r"..\robotis_mujoco_menagerie"
-    r"\robotis_tb3"
-    r"\scene_turtlebot3_waffle_pi.xml"
+    BASE_DIR
+    / "models"
+    / "robotis_tb3"
+    / "scene_turtlebot3_waffle_pi.xml"
 )
 
 SIMULATION_TIME = 45.0
@@ -241,7 +245,7 @@ def waypoint_controller(
 
 def main():
     model = mujoco.MjModel.from_xml_path(
-        MODEL_PATH
+        str(MODEL_PATH)
     )
 
     data = mujoco.MjData(model)
