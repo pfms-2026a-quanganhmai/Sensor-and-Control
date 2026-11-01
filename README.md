@@ -1,5 +1,19 @@
 # Sensor and Control - Integrated Project
 
+## Updated team integration
+
+The latest team model, camera/ArUco localisation and EKF are now connected to the
+LiDAR gate and trial logger through `run_integrated.py`.
+See [updated Chinese integration report](docs/INTEGRATION_UPDATE_CN.md) for scope,
+commands, measured failures and the remaining controller/docking work.
+
+```powershell
+.\.venv-lidar\Scripts\python.exe run_integrated.py --condition obstacle --gui
+```
+
+Obstacle handling currently stops the robot; it does not plan an avoidance route.
+The original waypoint controller is temporary and is not an LQR/docking controller.
+
 ## LiDAR processing and evaluation contribution
 
 Chinese implementation and viva guide: [docs/MY_PART_CN.md](docs/MY_PART_CN.md).

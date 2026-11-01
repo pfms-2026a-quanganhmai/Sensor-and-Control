@@ -533,7 +533,9 @@ def main():
                                 image_points,
                                 camera_matrix,
                                 dist_coeffs,
-                                flags=cv2.SOLVEPNP_IPPE_SQUARE,
+                                # 当前 OpenCV 的 IPPE 在近正视平面时产生错误解；
+                                # 改用迭代 PnP，并在联调测试中验证图像位姿误差。
+                                flags=cv2.SOLVEPNP_ITERATIVE,
                             )
 
                             if success:
