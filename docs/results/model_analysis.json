@@ -1,0 +1,97 @@
+{
+  "state": [
+    "along_track_error_m",
+    "cross_track_error_m",
+    "heading_error_rad"
+  ],
+  "input": [
+    "delta_linear_m_s",
+    "delta_angular_rad_s"
+  ],
+  "reference_speed_m_s": 0.12,
+  "dt_s": 0.02,
+  "A": [
+    [
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0024
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "B": [
+    [
+      0.02,
+      0.0
+    ],
+    [
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.02
+    ]
+  ],
+  "C_camera": [
+    [
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "controllability_rank": 3,
+  "camera_observability_rank": 3,
+  "stationary_linearisation_controllability_rank": 2,
+  "LQR_Q": [
+    6,
+    40,
+    10
+  ],
+  "LQR_R": [
+    4,
+    2
+  ],
+  "LQR_K": [
+    [
+      1.2098367238126055,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      4.36327916946894,
+      2.41495909202467
+    ]
+  ],
+  "closed_loop_eigenvalues": [
+    0.9565173973774667,
+    0.9951834207820399,
+    0.9758032655237479
+  ],
+  "closed_loop_spectral_radius": 0.9951834207820399,
+  "limits": [
+    "local moving-reference error model, not global nonlinear controllability proof",
+    "camera visible and calibrated: H=I; encoders alone do not observe absolute pose drift",
+    "in-place alignment and docking use separate nonlinear state feedback",
+    "command saturation, slip and lost measurements require experimental validation"
+  ]
+}

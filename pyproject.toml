@@ -30,7 +30,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/rosbridge_api", "src/lidar_evaluation"]
+packages = ["src/rosbridge_api", "src/lidar_evaluation", "src/navigation"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,0 +1,7 @@
+{
+  "complete_trials": 18,
+  "development_and_interruption_policy": "Development trials are retained separately under results/navigation.",
+  "interrupted_attempt": "The first multi-trial execution ended before shifted_start seed 2 finished. Its partial sensor log is retained. The same seed completed successfully as retry1-002.",
+  "population": "Six conditions, seeds 0..2 each; this is not a guarantee for arbitrary rooms or hardware.",
+  "closed_loop_controls": "No simulator base pose or obstacle ground truth is used for feedback or planning."
+}

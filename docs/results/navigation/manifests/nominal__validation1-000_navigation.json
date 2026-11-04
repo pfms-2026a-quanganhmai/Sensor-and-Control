@@ -1,0 +1,22 @@
+{
+  "condition": "nominal",
+  "seed": 0,
+  "success": true,
+  "complete_state": true,
+  "collision": false,
+  "duration_s": 11.580000000000537,
+  "final_position_error_m": 0.013753772407450052,
+  "final_heading_error_deg": 0.7532134723958905,
+  "estimation_rmse_m": 0.0041775098586515295,
+  "visual_updates": 116,
+  "rejected_visual": 0,
+  "replans": 16,
+  "stages": [
+    "NAVIGATE",
+    "VISUAL_DOCK",
+    "DOCKED"
+  ],
+  "last_stage": "DOCKED",
+  "last_safety": "clear",
+  "wall_s": 5.921999999998661
+}

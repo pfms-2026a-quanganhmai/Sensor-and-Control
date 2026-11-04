@@ -1,0 +1,25 @@
+{
+  "source": "independent configured virtual sensor calibration validation, not real hardware",
+  "camera_intrinsics": [
+    [
+      415.69219381653056,
+      0.0,
+      319.5
+    ],
+    [
+      0.0,
+      415.69219381653056,
+      239.5
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion": "zero by virtual camera design",
+  "camera_pose_count": 12,
+  "position_rmse_m": 0.005757123651055652,
+  "heading_rmse_deg": 0.24334395578258503,
+  "lidar_max_abs_error_m": 2.220446049250313e-16
+}

@@ -146,7 +146,10 @@ def run_trial(
     gui: bool = False,
     plots: bool = True,
     run_id: str = "run",
+    speed: float = 1.0,
 ) -> dict:
+    if not math.isfinite(speed) or speed <= 0:
+        raise ValueError("speed must be finite and positive")
     model, robot_geoms = build_model(condition == "obstacle")
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
@@ -186,6 +189,8 @@ def run_trial(
             else [],
             "lidar_dropout_interval_s": [2, 5] if condition == "lidar_dropout" else [],
             "initial_pose_prior": [0, 0, 0],
+            "gui_speed_factor": speed if gui else None,
+            "gui_refresh_limit_hz": 30 if gui else None,
         },
     )
     evidence_dir = output / "sensor_logs"
@@ -212,6 +217,10 @@ def run_trial(
     target = np.array([team.TARGET_X, team.TARGET_Y, 0.0])
     reached = False
     aborted = False
+    # 物理步长 0.002 秒不等于显示帧间隔。显示只需约30Hz，避免每秒500次窗口等待。
+    wall_start = time.monotonic()
+    simulation_start = float(data.time)
+    next_display = wall_start
     fields = [
         "time_s",
         "status",
@@ -226,7 +235,6 @@ def run_trial(
             writer = csv.DictWriter(stream, fieldnames=fields)
             writer.writeheader()
             while data.time < duration:
-                start = time.monotonic()
                 if viewer is not None and not viewer.is_running():
                     aborted = True
                     break
@@ -305,17 +313,48 @@ def run_trial(
                         }
                     )
                     last_log = data.time
-                if gui:
+                now = time.monotonic()
+                if gui and now >= next_display:
                     viewer.sync()
-                    cv2.imshow("Integrated TB3 - front camera", camera.last_image)
+                    if camera.last_image is not None:
+                        display = camera.last_image.copy()
+                        ratio = (data.time - simulation_start) / max(
+                            now - wall_start, 1e-9
+                        )
+                        label = f"sim {data.time:.1f}s | {ratio:.2f}x real time"
+                        cv2.putText(
+                            display,
+                            label,
+                            (10, 24),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0, 255, 255),
+                            2,
+                        )
+                        label = f"LiDAR: {front.status} | v command {linear:.3f} m/s"
+                        cv2.putText(
+                            display,
+                            label,
+                            (10, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0, 255, 255),
+                            2,
+                        )
+                        cv2.imshow("Integrated TB3 - front camera", display)
                     if cv2.waitKey(1) & 0xFF in (27, ord("q")):
                         aborted = True
                         break
+                    next_display = now + 1.0 / 30.0
                 if reached or collision:
                     break
                 mujoco.mj_step(model, data)
                 if gui:
-                    time.sleep(max(0, model.opt.timestep - (time.monotonic() - start)))
+                    # 按累计仿真时间节拍休眠；渲染耗时后可追赶，不把每次渲染开销永久叠加。
+                    deadline = wall_start + (data.time - simulation_start) / speed
+                    delay = deadline - time.monotonic()
+                    if delay > 0:
+                        time.sleep(delay)
             if data.time > last_log + 1e-9:
                 # 把最后一个物理步的编码器也预测到终止时刻，避免日志时刻错位。
                 delta = data.qpos[addresses] - previous_wheels
@@ -351,6 +390,7 @@ def run_trial(
             viewer.close()
         if gui:
             cv2.destroyAllWindows()
+    wall_duration = time.monotonic() - wall_start
     if plots:
         plot_logged_trial(
             logger.raw_path, output / "plots" / f"{condition}__{run_id}-{seed:03d}"
@@ -363,6 +403,8 @@ def run_trial(
         "visual_updates": visual_updates,
         "stopped_physics_steps": stopped_samples,
         "duration_s": record.duration_s,
+        "wall_duration_s": wall_duration,
+        "simulation_to_wall_ratio": record.duration_s / max(wall_duration, 1e-9),
         "final_position_error_m": record.final_position_error_m,
         "estimation_rmse_m": record.estimation_rmse_m,
         "raw_csv": str(logger.raw_path),
@@ -392,9 +434,17 @@ def main():
         "--gui", action="store_true", help="显示 MuJoCo 与相机窗口；默认无界面运行"
     )
     parser.add_argument("--no-plots", action="store_true")
+    parser.add_argument(
+        "--speed",
+        type=float,
+        default=1.0,
+        help="GUI播放速度倍数，例如2表示尽量2倍播放；不会提高车轮指令",
+    )
     args = parser.parse_args()
     if args.trials < 1 or not math.isfinite(args.duration) or args.duration <= 0:
         parser.error("trials and duration must be positive")
+    if not math.isfinite(args.speed) or args.speed <= 0:
+        parser.error("speed must be finite and positive")
     args.output_dir.mkdir(parents=True, exist_ok=True)
     for seed in range(args.trials):
         print(
@@ -407,6 +457,7 @@ def main():
                     args.gui,
                     not args.no_plots,
                     args.run_id,
+                    args.speed,
                 ),
                 ensure_ascii=False,
                 indent=2,

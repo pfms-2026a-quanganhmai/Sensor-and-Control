@@ -1,0 +1,33 @@
+{
+  "input_csv": "C:\\Users\\catfish\\Documents\\Codex\\2026-10-27\\integrated-project-due-tuesday-by-23\\work\\full-navigation\\docs\\results\\navigation\\trials.csv",
+  "input_sha256": "0d5a89b5c7e26ead347e5f05d3a2c0884848b8296f3797c87a5636f0a1460f39",
+  "created_utc": "2026-11-04T08:57:45.940781+00:00",
+  "source": "user-provided trial records; provenance must be documented by the team",
+  "trial_count": 18,
+  "conditions": [
+    "camera_dropout",
+    "lidar_dropout",
+    "noisy_encoder",
+    "nominal",
+    "obstacle",
+    "shifted_start"
+  ],
+  "required_columns": [
+    "trial_id",
+    "condition",
+    "seed",
+    "success",
+    "collision",
+    "duration_s",
+    "final_position_error_m",
+    "final_heading_error_deg",
+    "tracking_rmse_m",
+    "estimation_rmse_m"
+  ],
+  "rate_denominator": "all records in the condition, including failures",
+  "duration_denominator": "all records in the condition, including failures and timeouts",
+  "optional_metric_denominator": "non-empty values only; see each metric_count",
+  "standard_deviation": "population standard deviation, ddof=0",
+  "missing_value_policy": "blank/None; never imputed as zero",
+  "plots": true
+}
