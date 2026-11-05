@@ -1,5 +1,8 @@
 # Sensor and Control - Integrated Project
 
+**Final demonstration:** [TurtleBot3 Visual Waypoint Navigation and Docking](https://youtu.be/V5EIhJ3kfyU)  
+**Final simulation entry point:** `run_navigation.py`
+
 
 ## Project Overview
 
@@ -7,7 +10,7 @@
 **Project:** Track A – TurtleBot3 Visual Waypoint Navigation  
 **Platform:** TurtleBot3 Waffle Pi in MuJoCo
 
-This project aims to develop an autonomous mobile robot that can navigate through an environment containing obstacles and dock at an ArUco-marked charging station.
+This project implements an autonomous mobile robot that navigates an environment containing obstacles and docks at an ArUco-marked charging station. The final system completed **18/18 tested navigation and docking trials with no collisions** across six simulation conditions.
 
 The system integrates wheel encoder odometry, LiDAR sensing, camera-based ArUco detection, Extended Kalman Filter (EKF) localisation, and feedback control.
 
@@ -20,107 +23,166 @@ The system consists of five main components:
 1. **Modelling:** Differential-drive robot kinematics and state-space modelling.
 2. **Sensing:** Wheel encoders, 2D LiDAR and an RGB camera.
 3. **Estimation:** EKF combining encoder odometry with ArUco-based pose measurements.
-4. **Control:** Waypoint tracking using estimated robot states, with state-feedback/LQR development.
-5. **Integration:** Obstacle handling, visual docking and robustness evaluation.
+4. **Control:** LQR path tracking, encoder-feedback wheel servoing and PBVS visual docking, using estimated robot states.
+5. **Integration:** LiDAR occupancy-grid planning, active obstacle avoidance, visual docking and robustness evaluation.
 
 ### Data Flow
 
 ```text
-Wheel Encoders ─────┐
-                    ├──> EKF ──> Estimated State
-Camera + ArUco ─────┘                 |
-                                      v
-                           Navigation Controller
-                                      |
-LiDAR ──> Obstacle Detection ─────────┤
-                                      |
-                                      v
-                           Linear / Angular Velocity
-                                      |
-                                      v
-                           Differential Drive
-                                      |
-                                      v
-                              TurtleBot3
+Wheel encoders ──────┐
+                     ├──> EKF estimated [x, y, heading] ──┐
+Camera / ArUco ──────┘                                     │
+                                                           v
+LiDAR ──> Occupancy grid ──> Path planning ──> LQR tracking
+   │                                                   │
+   └──> Motion safety check <── PBVS visual docking <───┘
+                        │
+                        v
+                  Wheel-speed servo
+                        │
+                        v
+                 TurtleBot3 (MuJoCo)
 ```
+
+The full system transitions between `NAVIGATE`, `ACQUIRE_MARKER`, `VISUAL_DOCK`, and, when required, `ALIGN_APPROACH`, before reaching `DOCKED`.
 
 ## Technical Implementation
 
+
 ### A. Robot Modelling
 
-The TurtleBot3 Waffle Pi is modelled as a differential-drive mobile robot.
+The TurtleBot3 Waffle Pi is modelled as a differential-drive mobile robot operating on a planar surface.
 
-- Wheel radius: 0.033 m
-- Wheel separation: 0.287 m
-- Control inputs: linear velocity and angular velocity
-- Estimated planar state: [x, y, heading]
+**Robot parameters:**
 
-State-space modelling and controllability/observability analysis will be documented alongside the final controller.
-
+| Parameter | Value |
+|---|---|
+| Wheel radius | 0.033 m |
+| Wheel separation | 0.287 m |
+| Robot state | [x, y, theta] |
+| Control inputs | Linear velocity v, angular velocity omega |
 
 #### Differential-Drive Kinematics
 
-The TurtleBot3 is modelled as a differential-drive robot with two independently driven wheels.
-
-The robot state is defined as:
+The nonlinear kinematic model is:
 
 $$
-\mathbf{x} = [x,\ y,\ \theta]^T
-$$
-
-where $x$ and $y$ represent the robot position in the world frame, and $\theta$ represents its heading.
-
-The continuous-time kinematic model is:
-
-$$
-\dot{x} = v\cos\theta
+\dot{x}=v\cos\theta
 $$
 
 $$
-\dot{y} = v\sin\theta
+\dot{y}=v\sin\theta
 $$
 
 $$
-\dot{\theta} = \omega
+\dot{\theta}=\omega
 $$
 
-The relationship between body velocities and wheel angular velocities is:
+Wheel angular velocities are calculated from the commanded body velocities:
 
 $$
-\omega_L = \frac{v-\omega L/2}{r}
+\omega_L=\frac{v-\omega L/2}{r}
 $$
 
 $$
-\omega_R = \frac{v+\omega L/2}{r}
+\omega_R=\frac{v+\omega L/2}{r}
 $$
 
-where:
+where r is the wheel radius and L is the wheel separation.
 
-- $v$: linear velocity (m/s)
-- $\omega$: angular velocity (rad/s)
-- $r$: wheel radius (0.033 m)
-- $L$: wheel separation (0.287 m)
-- $\omega_L$, $\omega_R$: left and right wheel angular velocities (rad/s)
+#### Linearised State-Space Model
 
-These equations are implemented in `main.py` to convert velocity commands into MuJoCo wheel actuator commands.
+For LQR trajectory tracking, the nonlinear model is locally linearised around a moving reference trajectory.
 
-The nonlinear kinematic model provides the basis for the subsequent state-space and feedback controller design.
+The tracking error state is:
+
+$$
+\mathbf{e}=[e_x,e_y,e_\theta]^T
+$$
+
+The discrete error dynamics are:
+
+$$
+\mathbf{e}_{k+1}=A\mathbf{e}_k+B\Delta\mathbf{u}_k
+$$
+
+with:
+
+$$
+A=
+\begin{bmatrix}
+1&0&0\\
+0&1&v_r\Delta t\\
+0&0&1
+\end{bmatrix}
+$$
+
+$$
+B=
+\begin{bmatrix}
+\Delta t&0\\
+0&0\\
+0&\Delta t
+\end{bmatrix}
+$$
+
+The reference speed is 0.12 m/s and the control interval is 0.02 s.
+
+This local error model is used to design the LQR controller described in Section D.
+
+#### Controllability Analysis
+
+Controllability is evaluated using:
+
+$$
+\mathcal{C}=[B,\ AB,\ A^2B]
+$$
+
+At the moving reference speed of 0.12 m/s, the controllability matrix has rank 3.
+
+This means all three local tracking-error states are controllable under the moving-reference linearisation.
+
+At zero reference speed, the controllability rank decreases to 2. Therefore, the moving-reference LQR model alone is insufficient for all stationary alignment and docking manoeuvres.
+
+Separate nonlinear feedback control is used for these operations.
+
+#### Observability Analysis
+
+With a valid camera-based global pose measurement, the local measurement model uses:
+
+$$
+C=I_3
+$$
+
+The observability matrix is:
+
+$$
+\mathcal{O}=
+\begin{bmatrix}
+C\\
+CA\\
+CA^2
+\end{bmatrix}
+$$
+
+The resulting observability rank is 3 when the camera provides a valid pose measurement.
+
+However, wheel encoders alone cannot correct accumulated absolute position and heading drift. When the ArUco marker is outside the camera's field of view, the EKF relies on odometry prediction until valid visual measurements return.
+
+This analysis applies to the local linearised model and does not establish global controllability or observability of the complete nonlinear system.
+
+**Implementation:** `src/navigation/analysis.py` and `src/navigation/control.py`.
 
 
 ### B. Sensing
 
-The simulation includes:
+The TurtleBot3 Waffle Pi uses wheel encoders, a simulated 2D LiDAR and a front-mounted RGB camera for navigation and localisation.
 
-- Wheel joint measurements for encoder odometry.
-- A front-mounted RGB camera for ArUco detection.
-- OpenCV marker detection and pose estimation.
-- A simulated planar LiDAR for obstacle measurement.
-- Sensor calibration, noise handling and validation.
-
+The sensors provide measurements to the EKF, occupancy-grid planner and navigation safety system.
 
 #### Camera and ArUco Detection
 
-A front-mounted RGB camera is added to the TurtleBot3 MuJoCo model for visual localisation.
+The RGB camera captures images directly from the MuJoCo simulation. OpenCV is used to detect an ArUco marker and estimate its pose.
 
 **Camera configuration:**
 
@@ -128,407 +190,572 @@ A front-mounted RGB camera is added to the TurtleBot3 MuJoCo model for visual lo
 |---|---|
 | Resolution | 640 × 480 |
 | Vertical field of view | 60° |
-| Camera update interval | 0.1 s |
-| Camera mounting position | (0.10, 0.00, 0.12) m |
+| Camera position | (0.10, 0.00, 0.12) m |
+| Measurement interval | 0.10 s |
+| ArUco dictionary | DICT_4X4_50 |
+| Marker ID | 0 |
+| Marker size | 0.18 m |
+| Pose estimation | solvePnP (ITERATIVE) |
 
-The camera captures RGB images directly from the MuJoCo simulation. OpenCV is used to detect ArUco markers and estimate their relative poses.
+The camera intrinsic matrix is calculated from the image dimensions and the camera's field of view.
 
-**ArUco configuration:**
+ArUco corner detection uses subpixel refinement to improve measurement accuracy.
 
-- Dictionary: `DICT_4X4_50`
-- Marker ID: `0`
-- Marker size: `0.18 m`
-- Detection: OpenCV ArUco detector
-- Pose estimation: `solvePnP()`
+The system also checks measurement validity:
 
-The detected marker corners are converted into relative position and orientation measurements using the camera intrinsic matrix.
+- Marker ID verification.
+- Valid marker distance between 0.12 m and 5 m.
+- Reprojection error threshold of 2 pixels.
+- Pose validity and finite-value checks.
 
-The known marker position and camera mounting geometry are then used to estimate the robot's pose in the world frame.
+The marker pose is converted into the robot's world-frame position and heading using the known camera mounting transform and marker location.
 
-These measurements provide external corrections for the EKF.
+Valid visual pose measurements are supplied to the EKF.
 
 #### LiDAR Sensing
 
-A simulated 2D LiDAR is integrated into the TurtleBot3 model using MuJoCo ray casting.
+A simulated 2D LiDAR is implemented using MuJoCo ray casting.
 
-The LiDAR provides range measurements around the robot and is used to identify nearby walls and obstacles.
+**LiDAR configuration:**
 
-The sensing pipeline includes:
+| Parameter | Value |
+|---|---|
+| Number of beams | 180 |
+| Maximum range | 5.0 m |
+| Mounting position | (-0.049, 0.00, 0.20) m |
+| Map resolution | 0.07 m |
+| Obstacle inflation radius | 0.24 m |
 
-- Planar laser scanning
-- Range validity checks
-- Distance calibration and noise evaluation
-- Front obstacle detection
-- `clear`, `blocked`, and `unknown` status classification
+The LiDAR measurements are used to update a 2D occupancy grid, detect obstacles and support autonomous path planning.
 
-The existing safety logic stops the robot when an obstacle is too close or sensor information is insufficient.
+The implementation includes:
 
-This provides a safety layer for navigation, while active obstacle avoidance is handled by the navigation controller.
+- Range validity checking.
+- Robot self-geometry exclusion.
+- Log-odds occupancy-grid updates.
+- Obstacle inflation for clearance.
+- Local motion safety checks.
+- Detection of unavailable or invalid measurements.
+
+The navigation safety layer also checks the proposed robot motion against nearby LiDAR measurements and stops potentially unsafe commands.
+
+#### Wheel Encoder Measurements
+
+Wheel joint measurements provide odometry information for the EKF prediction step.
+
+The final simulation uses an encoder measurement noise standard deviation of 0.0003 rad under normal conditions.
+
+The noisy-encoder test increases this value to 0.0015 rad to evaluate robustness.
+
+These values represent simulated measurement noise assumptions rather than physical encoder calibration results.
 
 #### Coordinate Frames
 
-The project uses consistent coordinate frames for sensing, localisation, and control.
+The system uses four main coordinate frames:
 
-- **World frame:** Global position and heading of the robot.
-- **Robot frame:** Attached to the TurtleBot3, with +X forward and +Y left.
-- **Camera frame:** Used for ArUco pose estimation through OpenCV.
-- **LiDAR frame:** Attached to the robot, with scan angles referenced to the robot's forward direction.
+- **World frame (W):** Global reference for robot navigation and the charging station.
+- **Robot base frame (B):** Attached to the TurtleBot3, with +X forward and +Y left.
+- **Camera frame (C):** Used for visual measurements and ArUco pose estimation.
+- **Marker frame (M):** Attached to the known ArUco landmark.
 
-Camera measurements are transformed into the world frame before being used by the EKF.
+The LiDAR sensor also has a fixed mounting transform relative to the robot base.
 
-The controller receives the estimated robot pose:
+**Visual measurement transformation:**
 
-`[x, y, theta]`
+```text
+Known Marker Pose (World Frame)
+                |
+                v
+         Marker Frame (M)
+                ^
+                |
+       ArUco Detection
+                |
+         Camera Frame (C)
+                |
+       Camera Extrinsics
+                |
+                v
+       Robot Base Frame (B)
+                |
+                v
+      Estimated World Pose
+                |
+                v
+                EKF
+```
 
-rather than the simulator ground-truth pose.
+The complete camera rotation and translation are considered when converting visual measurements into the robot's planar pose.
+
+LiDAR measurements are transformed using the estimated robot pose to update the global occupancy grid.
+
+Simulator ground truth is not used as a measurement for localisation or navigation control.
+
+#### Noise Handling and Sensor Dropout
+
+The system includes tests for measurement noise and temporary sensor loss.
+
+- Invalid LiDAR readings are not treated as free space.
+- Camera measurements are checked before being passed to the EKF.
+- The EKF rejects inconsistent visual pose measurements using innovation gating.
+- Camera and LiDAR dropout conditions are included in the final robustness evaluation.
+
+The camera intrinsic parameters and mounting geometry are defined from the simulation model. The injected noise parameters are simulation assumptions, not experimentally measured physical sensor characteristics.
+
+**Implementation:** `src/navigation/vision.py`, `src/navigation/planner.py`, `src/navigation/runner.py` and the existing LiDAR evaluation modules.
 
 
 ### C. State Estimation
 
-An Extended Kalman Filter (EKF) estimates robot position and heading.
+The final system uses an Extended Kalman Filter (EKF) to estimate the TurtleBot3's position and heading.
 
-- Prediction uses wheel encoder odometry.
-- Correction uses camera-based ArUco pose measurements.
-- Estimated states are passed to the navigation controller.
-- Simulator ground truth is retained for evaluation only.
-
-The current implementation includes localisation error reporting and supports comparison under different sensor conditions.
-
-
-#### EKF Implementation
-
-The Extended Kalman Filter estimates the robot's planar state:
+The estimated state is:
 
 $$
-\hat{\mathbf{x}} = [\hat{x},\ \hat{y},\ \hat{\theta}]^T
+\hat{\mathbf{x}}=[\hat{x},\hat{y},\hat{\theta}]^T
 $$
 
-The EKF combines two sources of information:
+The EKF combines wheel encoder odometry with camera-based ArUco pose measurements.
 
-**1. Prediction — Wheel Encoder Odometry**
+#### EKF Prediction
 
-Changes in left and right wheel angles are converted into travelled distance and heading change.
-
-The predicted state is calculated as:
+Wheel encoder measurements provide the travelled distance and heading change:
 
 $$
-\hat{x}_{k+1} = \hat{x}_k + \Delta d\cos(\hat{\theta}_k+\Delta\theta/2)
+\Delta d=\frac{\Delta d_L+\Delta d_R}{2}
 $$
 
 $$
-\hat{y}_{k+1} = \hat{y}_k + \Delta d\sin(\hat{\theta}_k+\Delta\theta/2)
+\Delta\theta=\frac{\Delta d_R-\Delta d_L}{L}
+$$
+
+The predicted robot pose is:
+
+$$
+\hat{x}_{k+1}=\hat{x}_k+\Delta d\cos(\hat{\theta}_k+\Delta\theta/2)
 $$
 
 $$
-\hat{\theta}_{k+1} = \hat{\theta}_k+\Delta\theta
+\hat{y}_{k+1}=\hat{y}_k+\Delta d\sin(\hat{\theta}_k+\Delta\theta/2)
 $$
 
-The state covariance is propagated using the linearised motion-model Jacobian and process noise covariance Q.
+$$
+\hat{\theta}_{k+1}=\hat{\theta}_k+\Delta\theta
+$$
 
-**2. Correction — ArUco Visual Localisation**
+The covariance is propagated using:
 
-The front camera detects the ArUco marker and estimates its relative pose using OpenCV.
+$$
+P_{k+1}^{-}=FP_kF^T+Q_k
+$$
 
-The measurement is transformed into the world coordinate frame to obtain an observed robot position and heading.
+The process noise covariance is calculated from wheel-motion uncertainty and additional time-dependent model uncertainty, rather than using a single fixed matrix.
 
-The EKF corrects its predicted state using the measurement innovation and Kalman gain.
+#### EKF Visual Update
 
-This reduces accumulated wheel odometry drift when valid visual measurements are available.
+The RGB camera detects ArUco markers using OpenCV.
+
+The detected marker pose is transformed into the world frame using the known marker location and camera mounting geometry.
+
+The EKF uses the visual pose measurement to correct the predicted robot position and heading.
+
+The measurement innovation is:
+
+$$
+\mathbf{y}=\mathbf{z}-\hat{\mathbf{x}}^{-}
+$$
+
+The Kalman gain is:
+
+$$
+K=P^{-}(P^{-}+R)^{-1}
+$$
+
+The corrected state is:
+
+$$
+\hat{\mathbf{x}}^{+}=\hat{\mathbf{x}}^{-}+K\mathbf{y}
+$$
+
+Heading differences are angle-wrapped to avoid discontinuities around ±pi.
+
+The implementation also uses innovation-based measurement gating to reject inconsistent camera measurements, followed by Joseph-form covariance updating for numerical stability.
 
 #### EKF Parameters
 
-The initial implementation uses the following covariance settings:
-
-| Parameter | Value |
+| Parameter | Final Value |
 |---|---|
-| State | [x, y, theta] |
-| Initial position variance | 0.01 m² |
-| Initial heading variance | (2°)² |
-| Process noise Q | diag(0.002, 0.002, (1°)²) |
-| Camera measurement noise R | diag((0.03 m)², (0.03 m)², (3°)²) |
+| Estimated state | [x, y, theta] |
+| Initial position standard deviation | 0.015 m |
+| Initial heading standard deviation | 2° |
+| Camera position measurement standard deviation | 0.025 m |
+| Camera heading measurement standard deviation | 3° |
+| Visual innovation gate | 16.27 |
+| Control and prediction interval | 0.02 s |
+| Camera measurement interval | 0.10 s |
 
-These are initial simulation settings. Further tuning and evaluation are required to justify the final noise parameters.
+The camera measurement covariance is:
 
-#### Localisation Performance
+$$
+R=\operatorname{diag}(0.025^2,\ 0.025^2,\ (3\pi/180)^2)
+$$
 
-The implementation compares EKF state estimates with MuJoCo ground truth for evaluation purposes.
+The process covariance Q is updated using the measured wheel displacement and elapsed simulation time.
 
-An initial standalone test with real ArUco image measurements produced:
+These covariance parameters represent the simulation's assumed measurement and motion uncertainty and should not be interpreted as physical sensor calibration results.
 
-- Final position estimation error: **0.020 m**
-- Final heading estimation error: **9.1°**
+#### Localisation and Uncertainty Evaluation
 
-These values represent one preliminary run, not the final performance across repeated trials.
+The EKF estimates the robot pose throughout navigation and visual docking.
 
-Heading drift remains a limitation when the ArUco marker leaves the camera's field of view, as the filter must rely primarily on wheel odometry.
+- Ground truth is used only for independent evaluation.
+- Estimated and true robot trajectories are recorded.
+- Estimation errors and covariance bounds can be plotted.
+- Temporary camera dropout is included in the robustness tests.
+- Invalid or inconsistent visual measurements are rejected.
 
-Final localisation performance will be evaluated using repeated trials, trajectory comparisons and EKF covariance plots.
+When camera measurements are unavailable, uncertainty can increase as the EKF relies on wheel odometry.
+
+The final system completed all 18 submitted navigation and docking trials across six experimental conditions. These task-success results do not, by themselves, establish a particular EKF estimation RMSE; localisation accuracy is evaluated separately using recorded estimated and true states.
+
+**Implementation:** `src/navigation/estimation.py` and `src/navigation/vision.py`.
 
 
 ### D. Control and Navigation
 
-A proportional waypoint controller has been implemented as the initial baseline.
+The final navigation system combines occupancy-grid path planning, discrete LQR trajectory tracking, wheel-speed feedback control, and position-based visual servoing (PBVS).
 
-The remaining development includes formal state-feedback/LQR control, improved trajectory tracking, autonomous obstacle avoidance and visual docking.
+All navigation and control decisions use the EKF-estimated robot pose rather than MuJoCo ground truth.
 
+#### State-Space Model and LQR Control
 
-#### Baseline Waypoint Controller
-
-The initial navigation system uses a proportional controller to move the TurtleBot3 towards a predefined waypoint.
-
-The controller receives the estimated robot pose from the EKF:
+The LQR controller uses a local linearised error model defined in the moving reference frame:
 
 $$
-\hat{\mathbf{x}} = [\hat{x},\ \hat{y},\ \hat{\theta}]^T
+\mathbf{e}=[e_x,e_y,e_\theta]^T
 $$
 
-For a target waypoint $(x_t, y_t)$, the distance and heading errors are calculated as:
+where the states represent along-track, cross-track and heading errors.
+
+The discrete-time model is:
 
 $$
-d = \sqrt{(x_t-\hat{x})^2+(y_t-\hat{y})^2}
+\mathbf{e}_{k+1}=A\mathbf{e}_k+B\Delta\mathbf{u}_k
+$$
+
+with:
+
+$$
+A=
+\begin{bmatrix}
+1&0&0\\
+0&1&v_r\Delta t\\
+0&0&1
+\end{bmatrix}
 $$
 
 $$
-e_\theta = \operatorname{wrap}(\operatorname{atan2}(y_t-\hat{y},x_t-\hat{x})-\hat{\theta})
+B=
+\begin{bmatrix}
+\Delta t&0\\
+0&0\\
+0&\Delta t
+\end{bmatrix}
 $$
 
-The commanded linear and angular velocities are:
+The local LQR model is linearised about 0.12 m/s with a 0.02 s sampling interval. The implemented tracker uses a nominal 0.10 m/s forward-velocity command, adjusted through LQR feedback.
+
+The discrete LQR feedback law is:
 
 $$
-v = \min(K_d d,\ v_{\max})\max(0,\cos(e_\theta))
+\Delta\mathbf{u}=-K\mathbf{e}
+$$
+
+The weighting matrices are:
+
+$$
+Q=\operatorname{diag}(6,40,10)
 $$
 
 $$
-\omega = \operatorname{clip}(K_\theta e_\theta,-\omega_{\max},\omega_{\max})
+R=\operatorname{diag}(4,2)
 $$
 
-The cosine term reduces forward movement when the robot is not facing the target.
+The LQR gain is computed numerically by iteration of the discrete Riccati equation.
 
-**Initial controller parameters:**
+The implementation prioritises cross-track and heading accuracy while limiting excessive control effort.
+
+**Controller parameters:**
 
 | Parameter | Value |
 |---|---|
-| Distance gain, Kd | 0.8 |
-| Heading gain, Kθ | 1.8 |
-| Maximum linear velocity | 0.12 m/s |
-| Maximum angular velocity | 0.8 rad/s |
-| Position tolerance | 0.05 m |
-| Initial target waypoint | (1.0, 0.5) m |
+| Control interval | 0.02 s |
+| LQR reference speed | 0.12 m/s |
+| Maximum forward velocity | 0.14 m/s |
+| Maximum angular velocity | 0.75 rad/s |
+| LQR state weights Q | diag(6, 40, 10) |
+| LQR input weights R | diag(4, 2) |
 
-The controller stops when the estimated distance to the target falls below the position tolerance.
+For large heading errors, the robot first rotates towards the desired direction before continuing forward motion.
 
-This proportional controller serves as a baseline for evaluating the final state-feedback/LQR controller.
+The model and controller are implemented in `src/navigation/control.py`.
 
-#### Obstacle Monitoring and Safety
+#### Autonomous Obstacle Avoidance
 
-The current integrated implementation uses LiDAR measurements to monitor the robot's surroundings.
+The navigation system builds a 2D occupancy grid using LiDAR range measurements and the EKF-estimated robot pose.
 
-In `run_integrated.py`, the safety layer:
+The planner includes:
 
-- Checks the forward LiDAR scanning region.
-- Detects obstacles within a specified stopping distance.
-- Monitors missing or outdated sensor measurements.
-- Overrides motion commands with zero velocity when conditions are unsafe.
+- Occupancy-grid mapping using log-odds updates.
+- Obstacle inflation to account for robot clearance.
+- A grid-based path search with diagonal movement.
+- Path simplification using collision-checked shortcuts.
+- Periodic replanning as sensor measurements update the map.
 
-The current integration uses a 0.35 m front-obstacle stopping threshold.
+**Planner parameters:**
 
-This is an obstacle detection and emergency stopping mechanism, not yet a complete autonomous obstacle avoidance controller.
+| Parameter | Value |
+|---|---|
+| Grid resolution | 0.07 m |
+| Obstacle inflation radius | 0.24 m |
+| Replanning interval | 0.5 s |
 
-#### State-Feedback / LQR Controller
+The environment's actual obstacle positions are not supplied to the planner. Navigation decisions are based on LiDAR observations and the estimated robot state.
 
-The final controller design will be documented after integration, including:
+An additional safety layer checks the proposed motion against nearby LiDAR measurements and stops unsafe commands.
 
-- Linearised state-space model.
-- Controller gain or LQR weighting matrices.
-- Tracking error formulation.
-- Controller tuning and design justification.
-- Quantitative comparison with the baseline controller.
+The planner is implemented in `src/navigation/planner.py`.
+
+#### Wheel-Speed Feedback
+
+The controller converts linear and angular velocity commands into individual wheel-speed commands.
+
+A wheel-speed feedback loop uses encoder measurements, proportional-integral correction and friction feedforward compensation.
+
+This improves low-speed motion compared with the original baseline controller, which experienced difficulty approaching the target accurately.
 
 #### Visual Servoing and Docking
 
-The final navigation stage is intended to use camera measurements of the ArUco marker to guide the robot towards the charging station.
+After navigating near the charging station, the robot switches from path tracking to visual docking.
 
-The final implementation and docking performance will be documented after integration testing.
+The docking controller uses ArUco-based pose measurements fused through the EKF to regulate the final robot position and heading.
+
+The main navigation stages are:
+
+1. **NAVIGATE:** Follow the planned route using LQR.
+2. **ACQUIRE_MARKER:** Align the camera towards the ArUco marker.
+3. **VISUAL_DOCK:** Approach the final charging pose using PBVS.
+4. **ALIGN_APPROACH:** Reposition when a close-range alignment correction is needed.
+5. **DOCKED:** Stop after the docking conditions are maintained.
+
+The docking goal is:
+
+$$
+[x_g,y_g,\theta_g]=[1.05,\ 0,\ 0]
+$$
+
+The controller checks estimated position and heading errors, recent visual measurements and a stability holding period before declaring the docking operation complete.
+
+The final evaluation independently verifies the result using simulator ground truth.
+
+#### Baseline Comparison
+
+During early development, a proportional waypoint controller was used to test differential-drive motion and EKF feedback.
+
+The final system replaces this baseline with LQR trajectory tracking, autonomous path planning and visual docking.
+
+The final system's quantitative performance is presented in Section E.
 
 
 ### E. Integration and Robustness
 
-The integration framework combines localisation, LiDAR obstacle monitoring and robot motion control.
+The final integrated system combines LiDAR-based obstacle avoidance, camera-based ArUco localisation, EKF state estimation, LQR trajectory tracking, and PBVS visual docking.
 
-Existing tests include nominal operation, obstacle presence and temporary sensor loss.
+The complete navigation system is implemented in `run_navigation.py` and `src/navigation/`.
 
-Initial testing has identified tracking limitations and localisation drift when the ArUco marker leaves the camera view.
-
-Final performance results will be updated after full navigation and docking integration.
-
-
-### Integrated System Testing
-
-The integrated simulation combines the TurtleBot3 model, wheel odometry, camera-based ArUco localisation, EKF estimation, waypoint control, and LiDAR obstacle monitoring.
-
-The integration is implemented in `run_integrated.py`, with experimental results recorded for quantitative evaluation.
+The robot uses LiDAR measurements to update an occupancy grid and plan a collision-free route. The LQR controller tracks the planned path using EKF-estimated states. Near the charging station, the system switches to visual docking to control the final position and heading.
 
 #### Experimental Conditions
 
-Four conditions were tested:
+The final system was evaluated under six conditions:
 
-1. **Nominal:** Normal operation without additional obstacles.
-2. **Obstacle:** An obstacle placed along the robot's route.
-3. **Camera dropout:** Visual measurements unavailable between 2–5 seconds.
-4. **LiDAR dropout:** Laser measurements unavailable between 2–5 seconds.
+1. **Nominal:** Normal navigation and docking.
+2. **Obstacle:** Navigation with an obstacle in the environment.
+3. **Camera dropout:** Temporary loss of camera measurements.
+4. **LiDAR dropout:** Temporary loss of laser measurements.
+5. **Noisy encoder:** Increased wheel encoder measurement noise.
+6. **Shifted start:** Navigation from a different initial position.
 
-Each condition was tested three times with different noise seeds and a maximum simulation duration of 45 seconds.
+Each condition was tested three times, giving a total of 18 trials.
 
-A waypoint trial is considered successful if the robot reaches a ground-truth final position error of 0.05 m or less, without collision or timeout.
+#### Final Experimental Results
 
-#### Preliminary Results
+| Condition | Successful Trials | Collisions |
+|---|---|---|
+| Nominal | 3/3 | 0 |
+| Obstacle | 3/3 | 0 |
+| Camera dropout | 3/3 | 0 |
+| LiDAR dropout | 3/3 | 0 |
+| Noisy encoder | 3/3 | 0 |
+| Shifted start | 3/3 | 0 |
+| **Total** | **18/18** | **0** |
 
-| Condition | Success Rate | Collisions | Mean Final Position Error |
-|---|---|---|---|
-| Nominal | 0/3 | 0 | 0.154 m |
-| Obstacle | 0/3 | 0 | 0.904 m |
-| Camera dropout | 0/3 | 0 | 0.157 m |
-| LiDAR dropout | 0/3 | 0 | 0.151 m |
+All 18 trials successfully completed the navigation and docking task without collisions.
 
-These results represent the preliminary integration using the proportional waypoint controller, before the final LQR, obstacle avoidance and docking implementation.
+The success criteria included:
 
-#### Analysis and Limitations
+- Final ground-truth position error within 0.05 m.
+- Final heading error within 5 degrees.
+- No collisions or timeout.
+- Completion of the visual docking sequence.
 
-The initial tests identified several limitations:
+#### Position Accuracy
 
-- **Low-speed motion:** Small velocity commands near the target may be insufficient to overcome simulated wheel friction.
-- **Visual localisation:** When the ArUco marker leaves the camera's field of view, EKF correction becomes unavailable and odometry error may accumulate.
-- **Obstacle handling:** LiDAR safety stopping works, but the current baseline does not navigate around the obstacle.
-- **Tracking accuracy:** The baseline controller did not achieve the required 0.05 m position tolerance in these trials.
+The mean final position errors were below 0.015 m across all six experimental conditions.
 
-No collisions occurred during the recorded trials. However, collision-free operation alone does not demonstrate successful navigation.
+The final position error plot also shows the variation between repeated trials using population standard deviation.
 
-#### Further Evaluation
+These results demonstrate successful navigation and docking under the six tested conditions, including temporary sensor loss and increased encoder noise.
 
-The final integrated controller will be evaluated using the same conditions, including:
+#### Robustness and Limitations
 
-- Navigation and docking success rates.
-- Final position and heading errors.
-- Estimated versus ground-truth trajectories.
-- EKF estimation uncertainty.
-- Controller performance under sensor dropout and obstacles.
+The system demonstrated improved reliability compared with the earlier proportional waypoint controller.
 
-The final results will be compared with the baseline to identify improvements and remaining limitations.
+The final implementation includes:
 
-Detailed integration notes are available in [Integration Update](docs/INTEGRATION_UPDATE_CN.md).
+- LiDAR occupancy-grid mapping and replanning.
+- LQR tracking with estimated-state feedback.
+- EKF measurement gating and covariance propagation.
+- Wheel-speed feedback and friction compensation.
+- Visual docking with position and heading verification.
+- Safety checks for nearby obstacles and invalid LiDAR measurements.
+
+Although all submitted trials passed, the evaluation was limited to the tested simulation scenarios and three trials per condition. Performance in more complex environments and on real hardware remains unverified.
 
 
 ## Simulation and Evaluation
 
-The project uses MuJoCo to evaluate robot motion and sensor performance.
+The final system was evaluated in MuJoCo under six different experimental conditions, with three trials per condition.
 
-Evaluation focuses on:
+All 18 trials successfully completed the navigation and visual docking task without collisions.
 
-- Ground-truth versus estimated trajectories.
-- Position and heading estimation errors.
-- Waypoint tracking performance.
-- Obstacle detection and avoidance.
-- Robustness under sensor noise or temporary loss.
-- Navigation and docking success rates.
+The independent evaluation criteria were:
 
-Quantitative plots and final trial results will be added after integration testing.
+- Final ground-truth position error ≤ 0.05 m.
+- Final heading error ≤ 5°.
+- No collisions or timeout.
+- Successful completion of the docking sequence.
 
+### Task Success Rate
 
-### Running Integration Tests
+![Task Success Rate](docs/task_success.png)
 
-The integrated simulation can be executed using `run_integrated.py`.
+All six conditions achieved a 100% success rate (3/3 trials each).
 
-Run a nominal trial:
+The tested conditions included normal navigation, obstacles, camera dropout, LiDAR dropout, increased encoder noise and a shifted initial position.
 
-```powershell
-python run_integrated.py --condition nominal
-```
+### Final Position Accuracy
 
-Run an obstacle test with the MuJoCo viewer and camera window:
+![Final Position Error](docs/final_position_error.png)
 
-```powershell
-python run_integrated.py --condition obstacle --gui
-```
+The mean final position error remained below 0.015 m across all six conditions.
 
-Run repeated trials for the four evaluation conditions:
+The error bars represent population standard deviation over three trials per condition. The figure is from the final submitted simulation trials, not synthetic example data.
 
-```powershell
-python run_integrated.py --condition nominal --trials 3
-python run_integrated.py --condition obstacle --trials 3
-python run_integrated.py --condition camera_dropout --trials 3
-python run_integrated.py --condition lidar_dropout --trials 3
-```
+### Experimental Outputs
 
-These commands use the current baseline waypoint controller and LiDAR safety monitoring. They do not represent the final docking implementation.
+The final navigation system records:
 
-### Experimental Data and Outputs
+- Ground-truth, estimated and reference trajectories.
+- EKF covariance and estimation errors.
+- Navigation and docking outcomes.
+- LiDAR safety status and motion commands.
+- Experimental configurations and random seeds.
 
-The evaluation system automatically generates CSV files, summary reports and plots.
-
-By default, results are saved under `results/team_integration/`.
+Results are saved under `results/navigation/` by default.
 
 | Output | Description |
 |---|---|
-| `trials.csv` | Trial outcomes, errors and durations |
-| `raw/` | Ground-truth, estimated and reference states |
-| `sensor_logs/` | LiDAR status and motion commands |
-| `plots/` | Trajectory and EKF uncertainty plots |
-| `sensor_plots/` | LiDAR response visualisations |
-| `report/summary.csv` | Performance summary by condition |
+| `trials.csv` | Trial outcomes and quantitative errors |
+| `raw/` | Recorded robot trajectories and EKF covariance |
+| `plots/` | Trajectory and estimation uncertainty plots |
+| `sensor_logs/` | Navigation stages and LiDAR safety status |
+| `maps/` | Occupancy-grid maps and planned paths |
+| `report/` | Aggregated results and performance plots |
+| `frames/` | Captured camera images |
 
-Simulator ground truth is used only for evaluation and does not provide feedback to the navigation controller.
+### Reproducibility and Limitations
 
-### Visualisation and Results
+The evaluation uses recorded random seeds and clearly defined experimental conditions.
 
-The project evaluation includes three main types of visual evidence:
+Simulator ground truth is used only for evaluation, never as an input to the navigation controller.
 
-**1. Simulation Environment**
-
-MuJoCo visualisation of the TurtleBot3, surrounding environment, obstacles and ArUco marker.
-
-**2. Robot Trajectory and Localisation**
-
-Comparison between ground-truth position, EKF estimated position and reference waypoint.
-
-**3. Estimation Uncertainty and Sensor Response**
-
-EKF estimation errors and covariance bounds, together with LiDAR obstacle detection and safety-stop behaviour.
-
-Representative figures from the final tests will be included in this section before submission.
-
-### Reproducibility
-
-The simulation uses fixed initial conditions and recorded noise seeds for comparison between test conditions.
-
-Each trial records its experimental configuration and results. Repeated tests are used to evaluate performance rather than relying on a single demonstration.
-
-Final results will be updated after the complete navigation controller and visual docking system are integrated.
+Although all 18 submitted trials passed, the evaluation covers a limited set of simulation scenarios. More complex obstacle layouts, longer sensor outages and real-world hardware performance remain outside the scope of these results.
 
 
 ## Installation and Running
 
-The repository includes the modified TurtleBot3 MuJoCo model, camera configuration and ArUco marker assets under `models/robotis_tb3/`.
+The project uses Python, MuJoCo, OpenCV and NumPy.
 
-From the repository root, install the required Python dependencies and run the main simulation:
+The repository includes the required TurtleBot3 model, camera configuration and ArUco marker assets under `models/robotis_tb3/`.
+
+### Installation
+
+From the repository root, install the Python dependencies:
 
 ```powershell
 python -m pip install -e ".[evaluation,simulation]"
-python main.py
 ```
 
-For the LiDAR processing and evaluation module:
+### Run the Final Navigation System
+
+Run the complete simulation with obstacle avoidance and visual docking:
+
+```powershell
+python run_navigation.py --condition obstacle --gui
+```
+
+Run the nominal condition:
+
+```powershell
+python run_navigation.py --condition nominal --gui
+```
+
+The simulation includes LiDAR occupancy-grid mapping, EKF localisation, LQR path tracking and PBVS docking.
+
+### Run Repeated Experiments
+
+Run three trials for each experimental condition:
+
+```powershell
+python run_navigation.py --condition nominal --trials 3
+python run_navigation.py --condition obstacle --trials 3
+python run_navigation.py --condition camera_dropout --trials 3
+python run_navigation.py --condition lidar_dropout --trials 3
+python run_navigation.py --condition noisy_encoder --trials 3
+python run_navigation.py --condition shifted_start --trials 3
+```
+
+Results and performance plots are saved under `results/navigation/`. Use `--seed` for a specific starting random seed and `--run-id` for a unique output name. The simulation also supports MP4 capture with `--record-video`.
+
+### Additional Tools
+
+The repository also includes independent LiDAR testing and evaluation utilities:
 
 ```powershell
 python run_my_part.py
 ```
 
-Additional integration scripts and testing instructions are documented in the project files.
+Earlier development scripts such as `main.py` and `run_integrated.py` are retained for reference and baseline testing.
+
+**Final integrated entry point:** `run_navigation.py`
+
 
 ## Demo Video
 
-The final five-minute demonstration will present the system architecture, sensing, estimation, control, navigation and robustness results.
+**Final five-minute demonstration:** [TurtleBot3 Autonomous Navigation and Visual Docking](https://youtu.be/V5EIhJ3kfyU)
 
-**Video link:** To be added before submission.
+The video accompanies the complete code and quantitative test results, illustrating the integrated sensing, EKF estimation, LQR tracking, obstacle avoidance and charging-station docking pipeline.
 
 
 ## Team Contributions
@@ -537,33 +764,29 @@ The project was developed collaboratively by three team members, with responsibi
 
 | Team Member | Main Contributions |
 |---|---|
-| [Member 1] | MuJoCo simulation setup, TurtleBot3 model integration, differential-drive kinematics, wheel encoder odometry, RGB camera and ArUco detection, EKF localisation and initial waypoint control. |
-| [Member 2] | LiDAR simulation and processing, range calibration, obstacle detection and safety monitoring, experimental logging, repeated trials and performance evaluation. |
-| [Member 3] | State-space modelling, controllability and observability analysis, state-feedback/LQR controller, navigation and obstacle avoidance, and visual docking implementation. |
+| **Li Guan** | MuJoCo simulation setup and TurtleBot3 model integration; differential-drive kinematics, wheel-encoder odometry, RGB camera and ArUco localisation, EKF integration and initial waypoint control; integration and documentation support. |
+| **Ziyu Wu** | LiDAR simulation, processing and range calibration/validation; obstacle monitoring and safety checks; trial logging, repeated evaluation, performance metrics and results plots; integration support. |
+| **Quang Anh Mai** | State-space modelling and controllability/observability analysis; discrete LQR, wheel-speed compensation, occupancy-grid navigation and autonomous obstacle avoidance; PBVS docking and final integrated navigation implementation. |
 
 All members contributed to project integration, troubleshooting and preparation of the final demonstration and documentation.
 
 ## Generative AI Declaration
 
-Generative AI tools were used to assist with project development and documentation.
+Generative AI tools, including **OpenAI ChatGPT** and **OpenAI Codex**, were used in a supporting role for organising and refining documentation (including this README), reviewing code, explaining implementation details, and suggesting debugging and code revisions.
 
-**Tools used:**
-- **OpenAI ChatGPT:** Technical explanations, implementation guidance, troubleshooting and assistance with organising project documentation.
-- **OpenAI Codex:** Assistance with code development, debugging, integration testing and technical documentation.
-
-AI-generated suggestions and code were reviewed and tested by team members before being incorporated into the project.
-
-The team remains responsible for the final implementation, experimental results, technical decisions and submitted work.
+AI-assisted suggestions and modifications were reviewed and checked by team members. The team is responsible for the design decisions, the final code, and the experimental measurements and conclusions. Reported simulation results are based on project trials, not AI-generated measurements.
 
 
 
 ## References and Acknowledgements
 
-The project builds upon course tutorial material, MuJoCo examples and the ROBOTIS TurtleBot3 model resources. Adapted material and external resources will be acknowledged in the final project documentation.
+The project builds on the 41014 weekly tutorial examples and MuJoCo simulation examples, using ROBOTIS TurtleBot3 Waffle Pi model resources and OpenCV ArUco pose-estimation tools. The integrated pipeline adapts and extends these starting materials; third-party model assets and their licence information are retained in the repository.
 
 ---
 
+## Additional Tools and Component Documentation
 
+The following original sections are retained for the standalone LiDAR evaluation tools and optional Rosbridge interface. They are supporting documentation; the final assessed MuJoCo pipeline runs from `run_navigation.py`.
 
 ## LiDAR processing and evaluation contribution
 
@@ -578,7 +801,7 @@ python run_my_part.py
 This runs explicitly labelled sensor-component checks and writes CSV/JSON/PNG files
 to `results/my_part/`. It does **not** claim TurtleBot3 navigation or docking success.
 The report and logging modules accept the team's actual closed-loop trial data.
-The new contribution includes Chinese comments. Existing interface documentation follows.
+The component documentation includes Chinese notes. The original ROS interface documentation follows.
 
 ## Student Rosbridge API
 
@@ -669,6 +892,4 @@ python -m twine check --strict dist/*
 
 The tests mock rosbridge and do not require a physical robot.
 
-Before publishing, choose the final project name, add author/project metadata,
-choose a licence, and verify installation from the generated wheel in a clean
-virtual environment.
+The Rosbridge API and its test/build commands are retained as an optional tool interface. The completed Track A simulation and final submission run independently through `run_navigation.py`; no physical robot is required.
