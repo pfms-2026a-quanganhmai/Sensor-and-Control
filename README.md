@@ -397,7 +397,7 @@ The implementation also uses innovation-based measurement gating to reject incon
 The camera measurement covariance is:
 
 $$
-R=\operatorname{diag}(0.025^2,\ 0.025^2,\ (3\pi/180)^2)
+R=\mathrm{diag}(0.025^2,\ 0.025^2,\ (3\pi/180)^2)
 $$
 
 The process covariance Q is updated using the measured wheel displacement and elapsed simulation time.
@@ -474,11 +474,11 @@ $$
 The weighting matrices are:
 
 $$
-Q=\operatorname{diag}(6,40,10)
+Q=\mathrm{diag}(6,40,10)
 $$
 
 $$
-R=\operatorname{diag}(4,2)
+R=\mathrm{diag}(4,2)
 $$
 
 The LQR gain is computed numerically by iteration of the discrete Riccati equation.
