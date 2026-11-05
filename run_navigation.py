@@ -76,3 +76,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+#cd .\Sensor-and-Control
+#python .\run_navigation.py --gui --speed 2

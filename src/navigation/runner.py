@@ -303,7 +303,10 @@ def run(
                     if (
                         stage == "NAVIGATE"
                         and rho < 0.13
-                        and abs(ekf.x[1] - GOAL[1]) < 0.015
+                        and (
+                            abs(ekf.x[1] - GOAL[1]) < 0.03
+                            or (path is not None and len(path) < 2)
+                        )
                     ):
                         stage = "ACQUIRE_MARKER"
                     if stage == "ACQUIRE_MARKER":
