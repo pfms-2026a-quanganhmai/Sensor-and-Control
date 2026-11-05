@@ -7,5 +7,5 @@ build/
 dist/
 *.egg-info/
 .venv-lidar/
-results/
+/results/
 

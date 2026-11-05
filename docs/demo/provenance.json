@@ -1,0 +1,24 @@
+{
+  "duration_s": 279.0,
+  "fps": 10,
+  "size": [
+    960,
+    640
+  ],
+  "sources": [
+    {
+      "file": "nominal__demo4-000.mp4",
+      "sha256": "06e51878f2e7424dc3b521be8700e4132b3f3fbebab45713557aac84b7f5fd6d"
+    },
+    {
+      "file": "obstacle__demo5-002.mp4",
+      "sha256": "fab5dcf8380ba3dfdbe3b73fbfbc7c662cf0ba983bed7467e630699341346c82"
+    },
+    {
+      "file": "lidar_dropout__demo6-002.mp4",
+      "sha256": "6e014403f8957734551a397a868ace6c8e939edf54466a51cd2b0ef2b7a87178"
+    }
+  ],
+  "processing": "Recorded simulation clips and static evidence cards; no generated motion.",
+  "audio": "No narration; English captions"
+}

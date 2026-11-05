@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "purpose": "evaluation only; truth must never enter controller inputs",
+  "trial_id": "validation1-000",
+  "condition": "nominal",
+  "seed": 0,
+  "created_utc": "2026-11-04T08:49:05.558065+00:00",
+  "config": {
+    "task": "LiDAR navigation + ArUco PBVS docking",
+    "initial_prior": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "goal": [
+      1.05,
+      0.0,
+      0.0
+    ],
+    "controller": "discrete LQR path tracker + PBVS + encoder PI",
+    "lqr_Q": [
+      6,
+      40,
+      10
+    ],
+    "lqr_R": [
+      4,
+      2
+    ],
+    "control_dt_s": 0.02,
+    "wheel_friction_feedforward_rad_s": 1.0,
+    "encoder_angle_noise_std_rad": 0.0003,
+    "camera_R": [
+      [
+        0.0006250000000000001,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0006250000000000001,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0027415567780803775
+      ]
+    ],
+    "max_duration_s": 100.0,
+    "map_resolution_m": 0.07,
+    "inflation_m": 0.24,
+    "camera_dropout_s": [],
+    "lidar_dropout_s": [],
+    "success_rule": "estimated pose held with fresh camera, plus independent true-pose evaluation"
+  },
+  "goal": [
+    1.05,
+    0.0,
+    0.0
+  ],
+  "position_tolerance_m": 0.05,
+  "heading_tolerance_deg": 5.0,
+  "success_rule": "within both tolerances, no collision, no timeout",
+  "collision": false,
+  "timed_out": false,
+  "computed_failure_reasons": [],
+  "team_note": "",
+  "failure_reason": "",
+  "sample_count": 580,
+  "start_time_s": 0.0,
+  "end_time_s": 11.580000000000537,
+  "raw_csv": "C:\\Users\\catfish\\Documents\\Codex\\2026-10-27\\integrated-project-due-tuesday-by-23\\work\\full-navigation\\results\\validation1\\raw\\nominal__validation1-000.csv",
+  "raw_sha256": "5a2582b6ac34b5f1b81fda3c8ff18c80e9845434a69c4185f35553a70a57984c",
+  "trials_csv": "C:\\Users\\catfish\\Documents\\Codex\\2026-10-27\\integrated-project-due-tuesday-by-23\\work\\full-navigation\\results\\validation1\\trials.csv",
+  "raw_columns": [
+    "time_s",
+    "truth_x_m",
+    "truth_y_m",
+    "truth_heading_rad",
+    "estimate_x_m",
+    "estimate_y_m",
+    "estimate_heading_rad",
+    "reference_x_m",
+    "reference_y_m",
+    "reference_heading_rad",
+    "p00",
+    "p01",
+    "p02",
+    "p10",
+    "p11",
+    "p12",
+    "p20",
+    "p21",
+    "p22",
+    "linear_command_m_s",
+    "angular_command_rad_s"
+  ],
+  "result": {
+    "trial_id": "validation1-000",
+    "condition": "nominal",
+    "seed": 0,
+    "success": true,
+    "collision": false,
+    "duration_s": 11.580000000000537,
+    "final_position_error_m": 0.013753772407450052,
+    "final_heading_error_deg": 0.7532134723958905,
+    "tracking_rmse_m": 0.07094095095915061,
+    "estimation_rmse_m": 0.0041775098586515295
+  },
+  "all_trajectory_metrics": {
+    "sample_count": 580,
+    "estimation_rmse_m": 0.0041775098586515295,
+    "estimation_heading_rmse_deg": 0.09539687604674311,
+    "tracking_rmse_m": 0.07094095095915061,
+    "tracking_heading_rmse_deg": 0.3179783612315399,
+    "final_position_error_m": 0.013753772407450052,
+    "final_heading_error_deg": 0.7532134723958905
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "purpose": "evaluation only; truth must never enter controller inputs",
+  "trial_id": "validation1-000",
+  "condition": "camera_dropout",
+  "seed": 0,
+  "created_utc": "2026-11-04T08:49:22.063431+00:00",
+  "config": {
+    "task": "LiDAR navigation + ArUco PBVS docking",
+    "initial_prior": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "goal": [
+      1.05,
+      0.0,
+      0.0
+    ],
+    "controller": "discrete LQR path tracker + PBVS + encoder PI",
+    "lqr_Q": [
+      6,
+      40,
+      10
+    ],
+    "lqr_R": [
+      4,
+      2
+    ],
+    "control_dt_s": 0.02,
+    "wheel_friction_feedforward_rad_s": 1.0,
+    "encoder_angle_noise_std_rad": 0.0003,
+    "camera_R": [
+      [
+        0.0006250000000000001,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0006250000000000001,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0027415567780803775
+      ]
+    ],
+    "max_duration_s": 100.0,
+    "map_resolution_m": 0.07,
+    "inflation_m": 0.24,
+    "camera_dropout_s": [
+      4,
+      7
+    ],
+    "lidar_dropout_s": [],
+    "success_rule": "estimated pose held with fresh camera, plus independent true-pose evaluation"
+  },
+  "goal": [
+    1.05,
+    0.0,
+    0.0
+  ],
+  "position_tolerance_m": 0.05,
+  "heading_tolerance_deg": 5.0,
+  "success_rule": "within both tolerances, no collision, no timeout",
+  "collision": false,
+  "timed_out": false,
+  "computed_failure_reasons": [],
+  "team_note": "",
+  "failure_reason": "",
+  "sample_count": 2554,
+  "start_time_s": 0.0,
+  "end_time_s": 51.06000000001644,
+  "raw_csv": "C:\\Users\\catfish\\Documents\\Codex\\2026-10-27\\integrated-project-due-tuesday-by-23\\work\\full-navigation\\results\\validation2\\raw\\camera_dropout__validation1-000.csv",
+  "raw_sha256": "fcebf6982b9cd2ef99b188405b9076dd1771922640bbf8cb50e2017df167de1d",
+  "trials_csv": "C:\\Users\\catfish\\Documents\\Codex\\2026-10-27\\integrated-project-due-tuesday-by-23\\work\\full-navigation\\results\\validation2\\trials.csv",
+  "raw_columns": [
+    "time_s",
+    "truth_x_m",
+    "truth_y_m",
+    "truth_heading_rad",
+    "estimate_x_m",
+    "estimate_y_m",
+    "estimate_heading_rad",
+    "reference_x_m",
+    "reference_y_m",
+    "reference_heading_rad",
+    "p00",
+    "p01",
+    "p02",
+    "p10",
+    "p11",
+    "p12",
+    "p20",
+    "p21",
+    "p22",
+    "linear_command_m_s",
+    "angular_command_rad_s"
+  ],
+  "result": {
+    "trial_id": "validation1-000",
+    "condition": "camera_dropout",
+    "seed": 0,
+    "success": true,
+    "collision": false,
+    "duration_s": 51.06000000001644,
+    "final_position_error_m": 0.005658241664815741,
+    "final_heading_error_deg": 1.8948775726920055,
+    "tracking_rmse_m": 0.07334273958851949,
+    "estimation_rmse_m": 0.02421690607502132
+  },
+  "all_trajectory_metrics": {
+    "sample_count": 2554,
+    "estimation_rmse_m": 0.02421690607502132,
+    "estimation_heading_rmse_deg": 3.0247872947208383,
+    "tracking_rmse_m": 0.07334273958851949,
+    "tracking_heading_rmse_deg": 14.703103774064582,
+    "final_position_error_m": 0.005658241664815741,
+    "final_heading_error_deg": 1.8948775726920055
+  }
+}
